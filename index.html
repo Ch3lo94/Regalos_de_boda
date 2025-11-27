@@ -11,17 +11,15 @@
     background:#fafafa;
     font-family:"Segoe UI", sans-serif;
   }
-  .center {
-    text-align:center;
-    padding:30px;
-  }
+  .center { text-align:center; padding:30px; }
+
   .welcome-img {
     width:100%;
     max-width:420px;
     border-radius:20px;
     box-shadow:0 4px 12px rgba(0,0,0,0.2);
   }
-  .login-box { margin-top:20px; }
+
   .hidden { display:none; }
 
   .grid {
@@ -52,7 +50,6 @@
   .agotado {
     opacity:0.4;
     pointer-events:none;
-    filter: grayscale(100%);
   }
 
   #confirm-btn {
@@ -66,7 +63,6 @@
     font-size:18px;
     cursor:pointer;
   }
-
   #confirm-btn:disabled {
     background:#aaa;
     cursor:not-allowed;
@@ -76,27 +72,23 @@
 
 <body>
 
-<!-- PANTALLA DE BIENVENIDA -->
 <div id="welcome" class="center">
-  <img id="foto-boda" class="welcome-img" 
-       src="https://raw.githubusercontent.com/Ch3lo94/Regalos_Boda/main/images/IMG-20251127-WA0008.jpg">
-
+  <img class="welcome-img" src="https://raw.githubusercontent.com/Ch3lo94/Regalos_Boda/main/images/IMG-20251127-WA0008.jpg">
   <h2>Nos ayudarías mucho con estas cosas que nos faltan ❤️</h2>
-  <p>Ingresá con tu cuenta de Google y elegí el regalo.</p>
+  <p>Ingresá con tu cuenta de Google y seleccioná lo que desees regalarnos.</p>
 
   <div id="g_id_onload"
     data-client_id="342769047778-jc52eh3n59a3vjocagmomi8pln5kbqv3.apps.googleusercontent.com"
     data-callback="handleCredentialResponse">
   </div>
 
-  <div class="login-box g_id_signin"
+  <div class="g_id_signin"
     data-type="standard"
     data-size="large"
     data-theme="filled_blue">
   </div>
 </div>
 
-<!-- CATÁLOGO -->
 <div id="catalogo" class="hidden">
   <h1 class="center">Elegí un regalo</h1>
   <div id="grid" class="grid"></div>
@@ -104,54 +96,70 @@
 </div>
 
 <script>
-const API = "https://script.google.com/macros/s/AKfycbwOz_hUq0xRZmTel05NglgrK0rLX4W_U987q7eQ-aTV4s6Bt_87erQ4ccSaJTlmzPnv/exec";
+const API = "https://script.google.com/macros/s/AKfycbyHh6g0O_VjUy68fCils6IQF637Bk17mEAfm74Dl6vs--EsYbO6klQJnrNYj12yKtI/exec";
 
 let usuario = null;
 let seleccion = [];
 
-/* LOGIN GOOGLE */
+// ----------------------------------------------------------
+// FUNCIÓN - Mostrar mensaje final si ya respondió
+// ----------------------------------------------------------
+function mostrarMensajeFinal() {
+  document.body.innerHTML = `
+    <div class="center">
+      <h1>¡Gracias por tu regalo! 🎁</h1>
+      <p>Tu respuesta ya quedó registrada ❤️</p>
+    </div>`;
+}
+
+// ----------------------------------------------------------
+// LOGIN GOOGLE
+// ----------------------------------------------------------
 async function handleCredentialResponse(response) {
+
   const payload = JSON.parse(atob(response.credential.split('.')[1]));
 
-  usuario = { 
+  usuario = {
     nombre: payload.given_name,
     apellido: payload.family_name,
-    email: payload.email.toLowerCase()
+    email: payload.email.trim().toLowerCase()
   };
 
-  // CONSULTA AL BACKEND SI YA RESPONDIÓ
-  const check = await fetch(API + "?email=" + usuario.email);
-  const data = await check.json();
-
-  if (data.yaRespondio) {
-    document.body.innerHTML = `
-      <h1 style="text-align:center;margin-top:40px;">
-        Ya registramos tu respuesta ❤️
-      </h1>
-      <p style="text-align:center;">¡Gracias por ayudarnos!</p>
-    `;
+  // BLOQUEO LOCAL
+  if (localStorage.getItem("respondio_" + usuario.email)) {
+    mostrarMensajeFinal();
     return;
   }
 
-  // SI NO RESPONDIÓ → MOSTRAR CATÁLOGO
+  // BLOQUEO BACKEND
+  const valid = await fetch(API + "?email=" + usuario.email);
+  const result = await valid.json();
+
+  if (result.yaRespondio === true) {
+    localStorage.setItem("respondio_" + usuario.email, "1");
+    mostrarMensajeFinal();
+    return;
+  }
+
+  // Mostrar catálogo
   document.getElementById("welcome").classList.add("hidden");
   document.getElementById("catalogo").classList.remove("hidden");
-
   cargarCatalogo();
 }
 
-/* CATALOGO */
+// ----------------------------------------------------------
+// Cargar catálogo
+// ----------------------------------------------------------
 async function cargarCatalogo() {
   const res = await fetch(API);
   const items = await res.json();
-
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
 
   items.forEach(item => {
     const card = document.createElement("div");
-    card.className = "card";
 
+    card.className = "card";
     if (item.stockRestante <= 0) card.classList.add("agotado");
 
     card.innerHTML = `
@@ -167,6 +175,9 @@ async function cargarCatalogo() {
   });
 }
 
+// ----------------------------------------------------------
+// Selección
+// ----------------------------------------------------------
 function toggle(id, card) {
   if (seleccion.includes(id)) {
     seleccion = seleccion.filter(x => x !== id);
@@ -179,8 +190,11 @@ function toggle(id, card) {
   document.getElementById("confirm-btn").disabled = seleccion.length === 0;
 }
 
-/* CONFIRMAR REGALO */
+// ----------------------------------------------------------
+// Enviar selección
+// ----------------------------------------------------------
 document.getElementById("confirm-btn").onclick = async () => {
+
   const resp = await fetch(API, {
     method: "POST",
     body: JSON.stringify({
@@ -193,18 +207,12 @@ document.getElementById("confirm-btn").onclick = async () => {
 
   const r = await resp.json();
 
-  if (!r.success) {
-    alert(r.error);
-    return;
+  if (r.success) {
+    localStorage.setItem("respondio_" + usuario.email, "1");
+    mostrarMensajeFinal();
+  } else {
+    alert("Error: " + r.error);
   }
-
-  // MENSAJE FINAL Y BLOQUEO
-  document.body.innerHTML = `
-    <h1 style="text-align:center;margin-top:40px;">
-      ¡Gracias por tu regalo! 🎁❤️
-    </h1>
-    <p style="text-align:center;">Tu respuesta quedó registrada.</p>
-  `;
 };
 </script>
 
