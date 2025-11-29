@@ -4,6 +4,7 @@
   <base target="_top">
   <meta charset="UTF-8">
   <title>Regalos</title>
+
   <style>
     body { font-family: Arial, sans-serif; background:#fafafa; padding:30px; text-align:center; }
     h1 { color:#333; }
@@ -19,7 +20,6 @@
     #message { margin-top:18px; color:#555; }
     .notice { background:#fff3cd; padding:12px; border-radius:8px; margin:15px auto; max-width:720px; color:#856404; }
     .error { background:#f8d7da; color:#721c24; }
-    a.link { color:#1565c0; text-decoration:none; font-weight:bold; }
   </style>
 </head>
 <body>
@@ -37,11 +37,9 @@
   <div id="message"></div>
 
   <script>
-    // Cambiá esta URL por la tuya si querés mostrarla (tu webapp)
-    const WEBAPP_BASE = "https://script.google.com/macros/s/AKfycbwY5TFocek-mo2wHTNGDp8LF_1uGKZvS6Ear6kPErZFz8R2Fl9MuDKx885b_RFufvWI/exec";
-
     const params = new URLSearchParams(window.location.search);
     const email = params.get("email");
+
     let regaloSeleccionado = null;
     let regalosLista = [];
 
@@ -53,43 +51,23 @@
     }
 
     function showMessage(msg) {
-      const m = document.getElementById("message");
-      m.innerText = msg;
+      document.getElementById("message").innerText = msg;
     }
 
-    // Verificar que google.script.run exista (estamos dentro de la WebApp)
-    if (typeof google === 'undefined' || !google.script || !google.script.run) {
-      // No estamos en entorno Apps Script -> explicar al usuario
-      document.getElementById("regalos").innerHTML = `
-        <div style="max-width:700px;margin:auto;">
-          <p style="color:#b71c1c;font-weight:bold;">No se pudo cargar: la página debe abrirse desde la Web App de Google Apps Script.</p>
-          <p>Usá esta URL (ejemplo) y agregá <code>?page=regalos&email=tu@email.com</code> al final:</p>
-          <p><a class="link" href="${WEBAPP_BASE}" target="_blank">${WEBAPP_BASE}</a></p>
-          <p>Ejemplo final:<br><code>${WEBAPP_BASE}?page=regalos&email=ejemplo@dominio.com</code></p>
-        </div>`;
-    } else {
-      // Llamar al servidor para traer regalos
-      google.script.run
-        .withSuccessHandler(function(lista) {
-          try {
-            if (!Array.isArray(lista) || lista.length === 0) {
-              document.getElementById("regalos").innerHTML = "<p>No hay regalos disponibles por ahora.</p>";
-              return;
-            }
-            regalosLista = lista;
-            renderRegalos(lista);
-          } catch (e) {
-            document.getElementById("regalos").innerText = "Error al procesar los regalos.";
-            console.error(e);
-          }
-        })
-        .withFailureHandler(function(err) {
-          document.getElementById("regalos").innerText = "Error al cargar regalos desde el servidor.";
-          console.error("getRegalos failed:", err);
-          showInfo("Error al obtener los regalos desde el servidor. Revisa los permisos de despliegue o los logs en Apps Script.", true);
-        })
-        .getRegalos();
-    }
+    google.script.run
+      .withSuccessHandler(lista => {
+        if (!Array.isArray(lista) || lista.length === 0) {
+          document.getElementById("regalos").innerHTML = "<p>No hay regalos disponibles.</p>";
+          return;
+        }
+        regalosLista = lista;
+        renderRegalos(lista);
+      })
+      .withFailureHandler(err => {
+        console.error("Error:", err);
+        showInfo("Error al cargar los regalos.", true);
+      })
+      .getRegalos();
 
     function renderRegalos(lista) {
       const cont = document.getElementById("regalos");
@@ -98,9 +76,9 @@
         const div = document.createElement("div");
         div.className = "item";
         div.innerHTML = `
-          <img src="${reg.imagen || 'https://via.placeholder.com/300x160?text=Sin+imagen'}" alt="Regalo">
-          <h3>${escapeHtml(reg.nombre || '')}</h3>
-          <p>${escapeHtml(reg.descripcion || '')}</p>
+          <img src="${reg.imagen}" alt="Regalo">
+          <h3>${reg.nombre}</h3>
+          <p>${reg.descripcion}</p>
         `;
         div.onclick = () => seleccionar(div, reg.id);
         cont.appendChild(div);
@@ -111,47 +89,31 @@
       document.querySelectorAll(".item").forEach(e => e.classList.remove("selected"));
       element.classList.add("selected");
       regaloSeleccionado = id;
-      showMessage(""); // limpiar mensajes
+      showMessage("");
     }
 
     function enviarSeleccion() {
       if (!regaloSeleccionado) {
-        showMessage("Por favor, elegí un regalo antes de enviar.");
-        return;
-      }
-      if (!email) {
-        showInfo("No se detectó el email en la URL. Asegurate de abrir la WebApp con el parámetro <code>?page=regalos&email=tu@correo</code>.", true);
+        showMessage("Por favor elegí un regalo.");
         return;
       }
 
-      showMessage("Enviando selección...");
+      if (!email) {
+        showInfo("No se detectó email en la URL.", true);
+        return;
+      }
+
+      showMessage("Enviando...");
+
       google.script.run
-        .withSuccessHandler(function(res) {
-          try {
-            if (res && res.success) {
-              window.location.href = "exit.html";
-            } else {
-              const err = (res && res.error) ? res.error : "error_desconocido";
-              showInfo("No se pudo guardar la selección: " + err, true);
-            }
-          } catch (e) {
-            console.error(e);
-            showInfo("Ocurrió un error al procesar la respuesta del servidor.", true);
-          }
+        .withSuccessHandler(res => {
+          if (res.success) window.location.href = "exit.html";
+          else showInfo("Error: " + res.error, true);
         })
-        .withFailureHandler(function(err) {
-          console.error("guardarRespuesta failed:", err);
-          showInfo("Error al comunicarse con el servidor. Revisa permisos o logs.", true);
+        .withFailureHandler(err => {
+          showInfo("Fallo al comunicarse con el servidor.", true);
         })
         .guardarRespuesta(email, [regaloSeleccionado]);
-    }
-
-    // Pequeña función para evitar inyección visual
-    function escapeHtml(text) {
-      return text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
     }
   </script>
 
